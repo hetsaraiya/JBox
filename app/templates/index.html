@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Folders</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background-color: #f7f9fc;
+        color: #333;
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        color: #1d72b8;
+      }
+
+      h2 {
+        font-size: 1.5rem;
+        color: #555;
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+
+      
+      button {
+        background-color: #1d72b8;
+        color: #fff;
+        padding: 0.8rem 2rem;
+        border: none;
+        border-radius: 5px;
+        font-size: 1rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s ease, transform 0.2s ease;
+        margin: 0.5rem;
+      }
+      
+      
+      button:hover {
+        background-color: #155a8a;
+        transform: translateY(-3px);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      .container {
+        text-align: center;
+        max-width: 800px;
+        padding: 2rem;
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 1rem;
+      }
+
+      .nav-links a {
+        color: #1d72b8;
+        text-decoration: none;
+        font-size: 1rem;
+        transition: color 0.3s ease;
+      }
+
+      .nav-links a:hover {
+        color: #155a8a;
+      }
+
+      .folderBox {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background-color: #fff;
+        border: 1px solid #e1e4e8;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+        position: relative;
+      }
+
+      .folderBox p {
+        font-size: 1rem;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        text-align: center;
+      }
+
+      .contextMenu {
+        display: none;
+        position: absolute;
+        top: 40px;
+        right: 10px;
+        background-color: #fff;
+        border: 1px solid #e1e4e8;
+        border-radius: 5px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 1;
+        overflow: hidden;
+      }
+
+      .folderBox:hover .contextMenu {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Folders</h1>
+    <button id="createFolderButton">Create Folder</button>
+    <div id="folderList"></div>
+
+    <script>
+      async function fetchFolders() {
+        try {
+          const response = await fetch("/folders/");
+          const folders = await response.json();
+          const folderList = document.getElementById("folderList");
+          folderList.innerHTML = "";
+
+          folders.forEach((folder) => {
+            const folderBox = document.createElement("div");
+            folderBox.className = "folderBox";
+            folderBox.innerHTML = `
+              <p>${folder.name}</p>
+              <div class="contextMenu">
+                <button onclick="openFolder('${folder.id}')">Open</button>
+                <button onclick="deleteFolder('${folder.name}')">Delete</button>
+              </div>
+            `;
+            folderList.appendChild(folderBox);
+          });
+        } catch (error) {
+          console.error("Error fetching folders:", error);
+        }
+      }
+
+      function showContextMenu(event, folderId) {
+        event.stopPropagation();
+        const contextMenu = event.target.nextElementSibling;
+        contextMenu.style.display = "block";
+        document.addEventListener("click", function hideContextMenu(e) {
+          if (!contextMenu.contains(e.target)) {
+            contextMenu.style.display = "none";
+            document.removeEventListener("click", hideContextMenu);
+          }
+        });
+      }
+
+      async function deleteFolder(folderName) {
+        try {
+          const response = await fetch(`/folders/${folderName}`, {
+            method: "DELETE",
+          });
+          const result = await response.json();
+          alert(result.message);
+          fetchFolders(); // Refresh the folder list
+        } catch (error) {
+          console.error("Error deleting folder:", error);
+        }
+      }
+
+      async function openFolder(folderId) {
+        window.location.href = `/folder/?id=${folderId}`;
+      }
+
+      document
+        .getElementById("createFolderButton")
+        .addEventListener("click", async () => {
+          const folderName = prompt("Enter folder name:");
+          console.log(folderName);
+          if (folderName) {
+            try {
+              const response = await fetch("/create_folder/?name=" + folderName, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              });
+              const result = await response.json();
+              alert(result.message);
+              fetchFolders(); 
+            } catch (error) {
+              console.error("Error creating folder:", error);
+            }
+          }
+        });
+
+      // Fetch folders when the page loads
+      window.onload = fetchFolders;
+    </script>
+  </body>
+</html>

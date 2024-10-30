@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Files</title>
+    <style>
+      /* Base Styling */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #f7f9fc;
+        color: #333;
+        padding: 2rem;
+      }
+
+      h1 {
+        margin-bottom: 1rem;
+        font-size: 2rem;
+      }
+
+      /* Back Button Styling */
+      #backButton {
+        background-color: #1d72b8;
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 1.5rem;
+        transition: background-color 0.3s ease;
+      }
+
+      #backButton:hover {
+        background-color: #155a8a;
+      }
+
+      /* File List and Item Styling */
+      #fileList {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: 100%;
+        max-width: 800px;
+      }
+      .contextMenu {
+        display: none;
+        position: absolute;
+        top: 40px;
+        right: 10px;
+        background-color: #fff;
+        border: 1px solid #e1e4e8;
+        border-radius: 5px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        overflow: hidden;
+      }
+
+      .fileItem:hover .contextMenu {
+        display: block;
+        z-index: 10;
+      }
+
+      .fileItem {
+        position: relative;
+        padding: 1rem;
+        background-color: #fff;
+        border: 1px solid #e1e4e8;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: transform 0.3s ease;
+      }
+
+      .fileItem:not(.menu-open):hover {
+        transform: translateY(-2px);
+        z-index: 10;
+      }
+      .fileItem p {
+        font-size: 1rem;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+      }
+
+      /* Dots Icon Styling */
+      .dots {
+        cursor: pointer;
+        font-size: 1.2rem;
+        color: #888;
+        position: relative;
+      }
+
+      .contextMenu button {
+        z-index: 1;
+        display: block;
+        width: 100%;
+        padding: 0.5rem;
+        background: none;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: #333;
+        transition: background-color 0.3s ease;
+      }
+
+      .contextMenu button:hover {
+        background-color: #f1f5f9;
+      }
+
+
+      /* Drop Zone Styling */
+      #dropZone {
+        width: 100%;
+        max-width: 800px;
+        padding: 2rem;
+        border: 2px dashed #1d72b8;
+        border-radius: 8px;
+        text-align: center;
+        color: #1d72b8;
+        margin-bottom: 1.5rem;
+        transition: background-color 0.3s ease;
+      }
+
+      #dropZone.dragover {
+        background-color: #e1f5fe;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="backButton" onclick="window.location.href='/'">
+      Back to Folders
+    </button>
+    <h1>Files</h1>
+    <div id="dropZone">Drag and drop files here to upload</div>
+    <div id="fileList"></div>
+
+    <script>
+      async function fetchFiles(folderId) {
+        try {
+          const response = await fetch(`/files/${folderId}`);
+          const files = await response.json();
+          const fileList = document.getElementById("fileList");
+          fileList.innerHTML = "";
+
+          files.forEach((file) => {
+            const fileItem = document.createElement("div");
+            fileItem.className = "fileItem";
+            fileItem.innerHTML = `
+              <p>${file.name}</p>
+              <span class="dots" onclick="showContextMenu(event, '${file.name}')">...</span>
+              <div class="contextMenu">
+                <button onclick="downloadFile('${file.name}')">Download</button>
+                <button onclick="openFile('${file.name}')">Open</button>
+                <button onclick="deleteFile('${file.name}')">Delete</button>
+              </div>
+            `;
+            fileList.appendChild(fileItem);
+          });
+        } catch (error) {
+          console.error("Error fetching files:", error);
+        }
+      }
+      function getFolderNameFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("folder_name");
+      }
+
+      function showContextMenu(event, fileId) {
+        event.stopPropagation();
+
+        // Close other context menus
+        document.querySelectorAll(".contextMenu").forEach((menu) => {
+          menu.style.display = "none";
+        });
+
+        // Open the clicked context menu
+        const contextMenu = event.target.nextElementSibling;
+        contextMenu.style.display = "block";
+
+        document.addEventListener("click", function hideContextMenu(e) {
+          if (!contextMenu.contains(e.target)) {
+            contextMenu.style.display = "none";
+            document.removeEventListener("click", hideContextMenu);
+          }
+        });
+      }
+
+      async function downloadFile(filename) {
+        window.location.href = `/download/${filename}`;
+      }
+
+      async function openFile(fileId) {
+        window.location.href = `/file/view/?id=${fileId}`;
+      }
+      function getFolderIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("id");
+      }
+      async function deleteFile(filename) {
+        try {
+          const response = await fetch(
+            `/files/${encodeURIComponent(
+              filename
+            )}?folder_name=${getFolderIdFromUrl()}`,
+            {
+              method: "DELETE",
+              headers: {
+                Accept: "application/json",
+              },
+            }
+          );
+          const result = await response.json();
+          alert(result.message);
+          fetchFiles(folderName);
+        } catch (error) {
+          console.error("Error deleting file:", error);
+        }
+      }
+
+      const dropZone = document.getElementById("dropZone");
+
+      dropZone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+
+      dropZone.addEventListener("drop", async (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("dragover");
+        const files = event.dataTransfer.files;
+        const folderName = getFolderNameFromUrl();
+
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          try {
+            const response = await fetch(
+              `/upload/?folder_id=${getFolderIdFromUrl()}`,
+              {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                },
+                body: formData,
+              }
+            );
+
+            const result = await response.json();
+            alert(result.message);
+            fetchFiles(getFolderIdFromUrl());
+          } catch (error) {
+            console.error("Error uploading file:", error);
+          }
+        }
+      });
+
+      window.onload = () => {
+        const folderId = getFolderIdFromUrl();
+        if (folderId) {
+          fetchFiles(folderId);
+        } else {
+          console.error("No folder ID specified in the URL.");
+        }
+      };
+    </script>
+  </body>
+</html>
