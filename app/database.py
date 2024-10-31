@@ -1,6 +1,7 @@
 # app/database.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+import logging
 
 DATABASE_URL = "postgresql+asyncpg://postgres.hsgstrgqrxxlefxjzgds:BOMRAgaruFD3BOVU@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
 
@@ -18,6 +19,9 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         try:
             yield session
+        except Exception as e:
+            logging.error(f"Database connection error: {e}")
+            raise
         finally:
             await session.close()
 
