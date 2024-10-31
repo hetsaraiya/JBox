@@ -26,7 +26,7 @@ async def get_bot_status():
 @router.get("/status/guilds")
 async def get_guilds():
     try:
-        new= ensure_bot_ready()
+        new= await ensure_bot_ready()
         return {
             "channel" : bool(new)
         }
