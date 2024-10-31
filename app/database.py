@@ -9,7 +9,7 @@ DATABASE_URL = "postgresql+asyncpg://postgres.hsgstrgqrxxlefxjzgds:BOMRAgaruFD3B
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
-    pool_size=20,
+    pool_size=1,
     max_overflow=10,
     pool_pre_ping=True,
     pool_recycle=3600,
@@ -19,7 +19,7 @@ engine = create_async_engine(
     }
 )
 
-AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False,autocommit=False,autoflush=False)
 Base = declarative_base()
 
 async def get_db():
