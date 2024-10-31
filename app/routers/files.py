@@ -81,10 +81,7 @@ async def upload_file(file: UploadFile, folder_id: int):
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Upload failed: {str(e)}"
-        )
+        return {"status": "error", "message": str(e)}
 
     
 
