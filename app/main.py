@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .discord_bot import bot, DISCORD_TOKEN
-from .routers import folders, files, status, root
+from .routers import folders, files, status, root, test_db
 import asyncio
 
 CHUNK_SIZE = 24 * 1024 * 1024
@@ -18,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(test_db.router)
 app.include_router(root.router)
 app.include_router(folders.router)
 app.include_router(files.router)
