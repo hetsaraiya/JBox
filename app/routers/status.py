@@ -6,10 +6,13 @@ router = APIRouter(tags=["status"])
 
 @router.get("/status/")
 async def get_status():
-    channel = await ensure_bot_ready()
-    return {
-        "bot_ready": bot.is_ready(),
-        "channel_connected": bool(channel),
-        "channel_id": channel.id if channel else None,
-        "channel_name": channel.name if channel else None
-    }
+    try:
+        channel = await ensure_bot_ready()
+        return {
+            "bot_ready": bot.is_ready(),
+            "channel_connected": bool(channel),
+            "channel_id": channel.id if channel else None,
+            "channel_name": channel.name if channel else None
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
