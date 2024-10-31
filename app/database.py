@@ -9,7 +9,14 @@ DATABASE_URL = "postgresql+asyncpg://postgres.hsgstrgqrxxlefxjzgds:BOMRAgaruFD3B
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
-    connect_args={"statement_cache_size": 0}
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0
+    }
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
