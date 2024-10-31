@@ -29,7 +29,13 @@ async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     asyncio.create_task(bot.start(DISCORD_TOKEN))
-    print("Bot started")
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("discord").setLevel(logging.INFO)
+    logging.getLogger("discord.http").setLevel(logging.WARNING)
+    logging.getLogger("discord.state").setLevel(logging.WARNING)
+    logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+    logging.info("Discord bot has been started.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
