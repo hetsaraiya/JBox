@@ -1,14 +1,16 @@
 # app/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .discord_bot import bot, DISCORD_TOKEN
 from .routers import folders, files, status, root, test_db
+from .websocket_manager import manager
 import asyncio
-
-CHUNK_SIZE = 24 * 1024 * 1024
+from fastapi.responses import FileResponse
 
 app = FastAPI()
+
+favicon_path = 'favicon.ico'
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +25,10 @@ app.include_router(root.router)
 app.include_router(folders.router)
 app.include_router(files.router)
 app.include_router(status.router)
+
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
 
 @app.on_event("startup")
 async def startup_event():
@@ -41,6 +47,25 @@ async def startup_event():
 async def shutdown_event():
     if bot.is_ready():
         await bot.close()
+
+@app.websocket("/ws/progress")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.websocket("/ws/test")
+async def websocket_test(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await asyncio.sleep(5)
+            await manager.send_message("Test message")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 if __name__ == '__main__':
     import uvicorn

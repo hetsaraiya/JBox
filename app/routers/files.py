@@ -2,87 +2,72 @@
 from fastapi import APIRouter, UploadFile, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from ..discord_bot import ensure_bot_ready, CHUNK_SIZE
 from ..database import get_db, AsyncSessionLocal
 from ..discord_bot import bot, StorageBot
-
 from ..models import FileChunk
 from sqlalchemy import text
-
+from ..websocket_manager import manager
 
 router = APIRouter(tags=["files"])
 
 @router.post("/upload/")
 async def upload_file(file: UploadFile, folder_id: int):
     try:
-        # Check bot and channel status
         channel = await ensure_bot_ready()
         if not channel:
             raise HTTPException(
                 status_code=503,
                 detail="Discord channel not available. Please check configuration."
             )
-
         async with AsyncSessionLocal() as db:
-            # Check if folder exists
             result = await db.execute(
                 text("SELECT id FROM folders WHERE id = :name"),
                 {"name": folder_id}
             )
             folder = result.fetchone()
-            
             if not folder:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Folder '{folder_id}' not found"
                 )
-
-            # Split filename and extension
             filename, extension = file.filename.rsplit('.', 1) if '.' in file.filename else (file.filename, '')
-
-            # Check if file already exists in the folder
             result = await db.execute(
                 text("SELECT file_name FROM file_chunks WHERE file_name LIKE :file_name AND folder_id = :folder_id"),
                 {"file_name": f"{filename}%", "folder_id": folder_id}
             )
             existing_files = result.fetchall()
-
             if existing_files:
-                # Rename file by appending the count before the extension
                 count = len(existing_files)
                 file.filename = f"{filename}_{count + 1}.{extension}" if extension else f"{filename}_{count + 1}"
-
-            chunks = []
             chunk_id = 0
-
+            total_size = 0
             while True:
                 chunk = await file.read(CHUNK_SIZE)
                 if not chunk:
                     break
-                chunks.append(chunk)
                 chunk_id += 1
-
-            for i, chunk in enumerate(chunks, 1):
-                message_id = await bot.upload_chunk(chunk, file.filename, i)
+                total_size += len(chunk)
+                message_id = await bot.upload_chunk(chunk, file.filename, chunk_id)
+                await manager.send_message(f"Uploaded {total_size} bytes")
                 chunk_entry = FileChunk(
                     file_name=file.filename,
-                    chunk_id=i,
+                    chunk_id=chunk_id,
                     discord_message_id=message_id,
                     folder_id=folder_id
                 )
                 db.add(chunk_entry)
+                await manager.send_message(f"Uploaded {total_size} bytes")
             await db.commit()
-
+        await manager.send_message("Upload complete")
         return {
             "message": "File uploaded successfully",
             "filename": file.filename,
             "chunks": chunk_id
         }
-
     except Exception as e:
+        await manager.send_message(f"Error: {str(e)}")
         return {"status": "error", "message": str(e)}
-
     
 
 @router.delete("/files/{file_name}")
