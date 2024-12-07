@@ -1,14 +1,13 @@
 # app/routers/files.py
-from fastapi import APIRouter, UploadFile, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-import asyncio
-from ..discord_bot import ensure_bot_ready, CHUNK_SIZE
-from ..database import get_db, AsyncSessionLocal
-from ..discord_bot import bot, StorageBot
-from ..models import FileChunk
 from sqlalchemy import text
-from ..websocket_manager import manager
+
+from app.discord_bot import ensure_bot_ready, CHUNK_SIZE
+from app.database import get_db, AsyncSessionLocal
+from app.discord_bot import bot, StorageBot
+from app.models import FileChunk
+from app.logger import logger
 
 router = APIRouter(tags=["files"])
 
@@ -53,11 +52,6 @@ async def upload_file(file: UploadFile, folder_id: int):
                     chunk_id += 1
                     total_size += len(chunk)
                     message_id = await bot.upload_chunk(chunk, file.filename, chunk_id)
-                    try:
-                        await manager.send_message(f"Uploaded {total_size} bytes")
-                    except Exception as e:
-                        # logging.error(f"Failed to send WebSocket message: {e}")
-                        print(f"Failed to send WebSocket message: {e}")
 
                     chunk_entry = FileChunk(
                         file_name=file.filename,
@@ -71,11 +65,6 @@ async def upload_file(file: UploadFile, folder_id: int):
                     raise HTTPException(status_code=500, detail=f"Error uploading chunk {chunk_id}: {str(e)}")
 
             await db.commit()
-        try:
-            await manager.send_message("Upload complete")
-        except Exception as e:
-            # logging.error(f"Failed to send WebSocket completion message: {e}")
-            print(f"Failed to send WebSocket completion message: {e}")
         return {
             "message": "File uploaded successfully",
             "filename": file.filename,
@@ -83,9 +72,7 @@ async def upload_file(file: UploadFile, folder_id: int):
         }
     
     except Exception as e:
-        # logging.error(f"Error during file upload: {str(e)}")
-        print(f"Error during file upload: {str(e)}")
-        await manager.send_message(f"Error: {str(e)}")
+        logger.error(f"Error during file upload: {str(e)}")
         # Rollback the database entries and delete uploaded chunks from Discord
         async with AsyncSessionLocal() as db:
             for chunk_entry in uploaded_chunks:
@@ -101,8 +88,7 @@ async def upload_file(file: UploadFile, folder_id: int):
                     message = await channel.fetch_message(chunk_entry.discord_message_id)
                     await message.delete()
                 except Exception as e:
-                    # logging.error(f"Failed to delete message {chunk_entry.discord_message_id}: {e}")
-                    print(f"Failed to delete message {chunk_entry.discord_message_id}: {e}")
+                    logger.error(f"Failed to delete message {chunk_entry.discord_message_id}: {e}")
         return {"status": "error", "message": str(e)}
 
 @router.delete("/files/{file_name}")
@@ -127,7 +113,7 @@ async def delete_file(file_name: str, folder_id: int):
                         message = await channel.fetch_message(chunk.discord_message_id)
                         await message.delete()
                     except Exception as e:
-                        print(f"Failed to delete message {chunk.discord_message_id}: {e}")  # add logging
+                        logger.error(f"Failed to delete message {chunk.discord_message_id}: {e}")
             
             return {"message": f"File '{file_name}' deleted successfully"}
     except Exception as e:
