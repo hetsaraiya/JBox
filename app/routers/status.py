@@ -1,5 +1,5 @@
 # app/routers/status.py
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from ..discord_bot import bot, ensure_bot_ready
 
 router = APIRouter(tags=["status"])
@@ -15,5 +15,4 @@ async def get_status():
             "channel_name": channel.name if channel else None
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-    
+        raise HTTPException(status_code=500, detail="Error getting bot status.")

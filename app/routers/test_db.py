@@ -1,5 +1,5 @@
 # app/routers/test_db.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from sqlalchemy import text
@@ -13,4 +13,4 @@ async def test_db_connection(db: AsyncSession = Depends(get_db)):
             result = await db.execute(text("SELECT 1"))
             return {"status": "success", "result": result.scalar()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail="Error testing database connection.")
