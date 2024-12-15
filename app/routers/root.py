@@ -8,5 +8,4 @@ templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/")
 async def root(request: Request):
-    logger.info("This is an informational message")
-    return templates.TemplateResponse("index.html", {"request": request})
+    return {"message": "Hello World"}

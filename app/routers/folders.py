@@ -60,14 +60,3 @@ async def list_folders(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching folder list: {e}")
         raise HTTPException(status_code=500, detail="Error fetching folder list.")
-
-
-@router.get("/folder/")
-async def get_folder_page(request: Request):
-    try:
-        logger.info("Folder page loaded successfully")
-        return templates.TemplateResponse("folder.html", {"request": request})
-    except Exception as e:
-        logger.error(f"Error loading folder page: {e}")
-        raise HTTPException(status_code=500, detail="Error loading folder page.")
-
