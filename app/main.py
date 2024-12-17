@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from fastapi.responses import FileResponse
@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse
 from app.database import engine, Base
 from app.discord_bot import bot, DISCORD_TOKEN
 from app.routers import folders, files, status, root, test_db
+from app.websocket_manager import WebSocketManager
+
 app = FastAPI()
 
 favicon_path = 'favicon.ico'
@@ -24,6 +26,8 @@ app.include_router(root.router)
 app.include_router(folders.router)
 app.include_router(files.router)
 app.include_router(status.router)
+
+websocket_manager = WebSocketManager()
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
@@ -46,6 +50,16 @@ async def startup_event():
 async def shutdown_event():
     if bot.is_ready():
         await bot.close()
+
+@app.websocket("/ws/progress")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket_manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket_manager.send_message(data)
+    except WebSocketDisconnect:
+        websocket_manager.disconnect(websocket)
 
 if __name__ == '__main__':
     import uvicorn

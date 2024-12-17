@@ -133,6 +133,28 @@ JBox/
     - `ws://localhost:8000/ws/progress`
     - WebSocket endpoint for real-time upload progress updates.
 
+## WebSocket Implementation Details
+
+To implement WebSocket for real-time upload progress updates, follow these steps:
+
+1. **Backend Implementation:**
+    - Add WebSocket route and handler in `app/main.py`.
+    - Create a `WebSocketManager` class in `app/websocket_manager.py` to manage WebSocket connections.
+    - Update the `upload_file` function in `app/routers/files.py` to send progress updates via WebSocket.
+
+2. **Frontend Implementation:**
+    - Add WebSocket client-side code in `app/templates/index.html` to connect and display progress updates.
+
+## Running WebSocket Server
+
+To run the WebSocket server, use the following command:
+
+```sh
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Make sure to update the WebSocket URL in the client-side code if you are running the server on a different host or port.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

@@ -1,5 +1,5 @@
 # app/routers/files.py
-from fastapi import APIRouter, UploadFile, HTTPException
+from fastapi import APIRouter, UploadFile, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
@@ -8,11 +8,14 @@ from app.database import get_db, AsyncSessionLocal
 from app.discord_bot import bot, StorageBot
 from app.models import FileChunk
 from app.logger import logger
+from app.websocket_manager import WebSocketManager
 
 router = APIRouter(tags=["files"])
 
+websocket_manager = WebSocketManager()
+
 @router.post("/upload/")
-async def upload_file(file: UploadFile, folder_id: int):
+async def upload_file(file: UploadFile, folder_id: int, websocket_manager: WebSocketManager = Depends(websocket_manager)):
     uploaded_chunks = []
     try:
         channel = await ensure_bot_ready()
@@ -61,6 +64,15 @@ async def upload_file(file: UploadFile, folder_id: int):
                     )
                     db.add(chunk_entry)
                     uploaded_chunks.append(chunk_entry)
+
+                    # Send progress update via WebSocket
+                    progress = {
+                        "filename": file.filename,
+                        "chunk_id": chunk_id,
+                        "total_size": total_size
+                    }
+                    await websocket_manager.send_message(progress)
+
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"Error uploading chunk {chunk_id}: {str(e)}")
 
