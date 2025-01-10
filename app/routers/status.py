@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from ..discord_bot import bot, ensure_bot_ready
 from ..logger import logger
+from app.exceptions import DiscordBotException
 
 router = APIRouter(tags=["status"])
 
@@ -18,4 +19,4 @@ async def get_status():
         }
     except Exception as e:
         logger.error("Error getting bot status: %s", e)
-        raise HTTPException(status_code=500, detail="Error getting bot status")
+        raise DiscordBotException(f"Error getting bot status: {str(e)}")

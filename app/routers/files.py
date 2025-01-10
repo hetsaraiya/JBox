@@ -8,6 +8,10 @@ from app.database import get_db, AsyncSessionLocal
 from app.discord_bot import bot, StorageBot
 from app.models import FileChunk
 from app.logger import logger
+from app.exceptions import (
+    NotFoundException, DatabaseException, FileOperationException,
+    DiscordBotException
+)
 
 router = APIRouter(tags=["files"])
 
@@ -17,10 +21,8 @@ async def upload_file(file: UploadFile, folder_id: int):
     try:
         channel = await ensure_bot_ready()
         if not channel:
-            raise HTTPException(
-                status_code=503,
-                detail="Discord channel not available. Please check configuration."
-            )
+            raise DiscordBotException("Discord channel not available")
+        
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 text("SELECT id FROM folders WHERE id = :name"),
@@ -28,10 +30,8 @@ async def upload_file(file: UploadFile, folder_id: int):
             )
             folder = result.fetchone()
             if not folder:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Folder '{folder_id}' not found"
-                )
+                raise NotFoundException(f"Folder with id {folder_id} not found")
+            
             filename, extension = file.filename.rsplit('.', 1) if '.' in file.filename else (file.filename, '')
             result = await db.execute(
                 text("SELECT file_name FROM file_chunks WHERE file_name LIKE :file_name AND folder_id = :folder_id"),
@@ -73,7 +73,6 @@ async def upload_file(file: UploadFile, folder_id: int):
     
     except Exception as e:
         logger.error(f"Error during file upload: {str(e)}")
-        # Rollback the database entries and delete uploaded chunks from Discord
         async with AsyncSessionLocal() as db:
             for chunk_entry in uploaded_chunks:
                 try:
@@ -89,7 +88,7 @@ async def upload_file(file: UploadFile, folder_id: int):
                     await message.delete()
                 except Exception as e:
                     logger.error(f"Failed to delete message {chunk_entry.discord_message_id}: {e}")
-        return {"status": "error", "message": str(e)}
+        raise FileOperationException(f"Error uploading file: {str(e)}")
 
 @router.delete("/files/{file_name}")
 async def delete_file(file_name: str, folder_id: int):
@@ -144,10 +143,7 @@ async def download_file(filename: str):
             chunks = result.fetchall()
             
             if not chunks:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"File {filename} not found"
-                )
+                raise NotFoundException(f"File {filename} not found")
             
             async def file_generator():
                 for chunk_id, discord_message_id in chunks:
@@ -164,30 +160,39 @@ async def download_file(filename: str):
             
             return StreamingResponse(file_generator(), media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename={filename}"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error downloading file.")  
+        raise FileOperationException(f"Error downloading file: {str(e)}")  
 
 import mimetypes
 
-@router.get("/open/{id}")
-async def open_file(id: int):
+@router.get("/open/{name}")
+async def open_file(name: str, folder_id: int):
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(
-                text("SELECT file_name, chunk_id, discord_message_id FROM file_chunks WHERE id = :id ORDER BY chunk_id"),
-                {"id": id}
+                text("SELECT file_name, chunk_id, discord_message_id FROM file_chunks WHERE file_name = :name AND folder_id = :folder_id ORDER BY chunk_id"),
+                {"name": name, "folder_id": folder_id}
             )
             chunks = result.fetchall()
             
             if not chunks:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"File with id {id} not found"
+                    detail=f"File '{name}' not found"
                 )
             
-            filename = chunks[0][0]
-            mime_type, _ = mimetypes.guess_type(filename)
+            mime_type, _ = mimetypes.guess_type(name)
             if not mime_type:
                 mime_type = "application/octet-stream"
+            
+            viewable_types = [
+                'text/', 'image/', 'video/', 'audio/',
+                'application/pdf',
+                'application/json',
+                'application/javascript',
+                'application/xml'
+            ]
+            
+            is_viewable = any(mime_type.startswith(vtype) for vtype in viewable_types)
             
             async def file_generator():
                 for _, chunk_id, discord_message_id in chunks:
@@ -201,10 +206,25 @@ async def open_file(id: int):
                             status_code=500,
                             detail=f"Failed to fetch chunk {chunk_id} from Discord: {str(e)}"
                         )
+
+            content_disposition = f"inline; filename={name}" if is_viewable else f"attachment; filename={name}"
             
-            return StreamingResponse(file_generator(), media_type=mime_type)
+            headers = {
+                "Content-Type": mime_type,
+                "Content-Disposition": content_disposition,
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type"
+            }
+            
+            return StreamingResponse(
+                file_generator(),
+                media_type=mime_type,
+                headers=headers
+            )
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error opening file.")
+        raise HTTPException(status_code=500, detail=f"Error opening file: {str(e)}")
+
 
 @router.get("/view/{id}")
 async def view_file(id: int):

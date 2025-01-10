@@ -6,6 +6,15 @@ from fastapi.templating import Jinja2Templates
 from ..database import get_db
 from ..models import Folder
 from ..logger import logger
+from app.exceptions import (
+    NotFoundException, DatabaseException, ValidationException
+)
+from app.utils.constants import (
+    EMPTY_FOLDER_NAME,
+    FOLDER_NOT_FOUND,
+    FOLDER_CREATE_ERROR,
+    FOLDER_DELETE_ERROR
+)
 
 router = APIRouter(tags=["folders"])
 templates = Jinja2Templates(directory="app/templates")
@@ -13,6 +22,9 @@ templates = Jinja2Templates(directory="app/templates")
 @router.post("/create_folder/")
 async def create_folder(name: str, db: AsyncSession = Depends(get_db)):
     try:
+        if not name:
+            raise ValidationException(EMPTY_FOLDER_NAME)
+            
         result = await db.execute(text("SELECT name FROM folders WHERE name LIKE :name"), {"name": f"{name}%"})
         existing_folders = result.fetchall()
         
@@ -25,8 +37,7 @@ async def create_folder(name: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"Folder '{name}' created successfully")
         return {"message": f"Folder '{name}' created successfully"}
     except Exception as e:
-        logger.error(f"Error creating folder: {e}")
-        raise HTTPException(status_code=500, detail="Error creating folder.")
+        raise DatabaseException(f"{FOLDER_CREATE_ERROR}: {str(e)}")
 
 @router.delete("/folders/{folder_name}")
 async def delete_folder(folder_name: str, db: AsyncSession = Depends(get_db)):
@@ -35,8 +46,7 @@ async def delete_folder(folder_name: str, db: AsyncSession = Depends(get_db)):
         folder = result.fetchone()
         
         if not folder:
-            logger.warning(f"Folder '{folder_name}' not found")
-            raise HTTPException(status_code=404, detail=f"Folder '{folder_name}' not found")
+            raise NotFoundException(FOLDER_NOT_FOUND)
         
         folder_id = folder.id
         
@@ -46,8 +56,7 @@ async def delete_folder(folder_name: str, db: AsyncSession = Depends(get_db)):
         logger.info(f"Folder '{folder_name}' and all its files deleted successfully")
         return {"message": f"Folder '{folder_name}' and all its files deleted successfully"}
     except Exception as e:
-        logger.error(f"Error deleting folder: {e}")
-        raise HTTPException(status_code=500, detail="Error deleting folder.")
+        raise DatabaseException(f"{FOLDER_DELETE_ERROR}: {str(e)}")
 
 
 @router.get("/folders/")

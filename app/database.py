@@ -15,7 +15,6 @@ DATABASE_NAME = os.getenv("DATABASE_NAME")
 
 DATABASE_URL = f"postgresql+asyncpg://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}"
 
-# Create the async engine with `statement_cache_size` set to 0
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
