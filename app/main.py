@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 
 from app.database import engine, Base
 from app.discord_bot import bot, DISCORD_TOKEN
-from app.routers import folders, files, status, root, test_db
+from app.routers import folders, files, status, root, test_db, auth
 from app.exceptions import (
     BaseAPIException,
     NotFoundException,
@@ -35,8 +35,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include all routers
 app.include_router(test_db.router)
 app.include_router(root.router)
+app.include_router(auth.router)  # Add authentication router
 app.include_router(folders.router)
 app.include_router(files.router)
 app.include_router(status.router)
