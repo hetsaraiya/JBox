@@ -17,6 +17,8 @@ FILE_UPLOAD_ERROR = "Error uploading file"
 FILE_DOWNLOAD_ERROR = "Error downloading file"
 FILE_DELETE_ERROR = "Error deleting file"
 FILE_CHUNK_ERROR = "Error processing file chunk"
+FILE_TYPE_NOT_SUPPORTED = "File type not supported for viewing in browser"
+FILE_TOO_LARGE = "File is too large to view in browser"
 
 # Discord Bot Error Messages
 DISCORD_BOT_ERROR = "Discord bot operation failed"

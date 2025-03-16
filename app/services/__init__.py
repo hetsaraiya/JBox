@@ -15,7 +15,11 @@ from .file_service import (
     delete_file,
     get_file_chunks,
     create_file_download_stream,
-    create_file_view_stream
+    create_file_view_stream,
+    get_file_metadata,
+    get_mime_type,
+    is_file_viewable,
+    get_file_type_category
 )
 from .discord_service import (
     bot,
@@ -39,6 +43,8 @@ __all__ = [
     # File services
     "list_files", "delete_file", "get_file_chunks", 
     "create_file_download_stream", "create_file_view_stream",
+    "get_file_metadata", "get_mime_type",
+    "is_file_viewable", "get_file_type_category"
     
     # Discord services
     "bot", "ensure_bot_ready", "upload_file_chunk", "get_bot_status",

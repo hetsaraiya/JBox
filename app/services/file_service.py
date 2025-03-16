@@ -1,15 +1,45 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from fastapi.responses import StreamingResponse
-from typing import List
+from fastapi.responses import StreamingResponse, JSONResponse
+from typing import List, Dict, Any, Tuple
+from fastapi import status
 
 from app.exceptions import NotFoundException, DatabaseException, FileOperationException
-from app.utils.constants import FILE_NOT_FOUND
+from app.utils.constants import FILE_NOT_FOUND, INVALID_FILE_TYPE, FILE_TYPE_NOT_SUPPORTED
 from app.models import FileChunk
 import mimetypes
+import os
 
 # This will be replaced with the modularized Discord bot in discord_service.py
 from app.services.discord_service import bot, ensure_bot_ready
+
+# Enhanced list of viewable MIME type categories
+VIEWABLE_MIME_TYPES = [
+    'text/',
+    'image/',
+    'video/',
+    'audio/',
+    'application/pdf',
+    'application/json',
+    'application/javascript',
+    'application/xml',
+    'application/xhtml+xml'
+]
+
+# Map of specific file extensions to MIME types (for better detection)
+EXTENSION_MIME_MAP = {
+    '.md': 'text/markdown',
+    '.svg': 'image/svg+xml',
+    '.yaml': 'text/yaml',
+    '.yml': 'text/yaml',
+    '.csv': 'text/csv',
+    '.py': 'text/x-python',
+    '.js': 'application/javascript',
+    '.ts': 'text/typescript',
+    '.jsx': 'text/jsx',
+    '.tsx': 'text/tsx',
+    '.json': 'application/json',
+}
 
 async def list_files(db: AsyncSession, folder_id: int, user_id: int):
     """List all files in a folder belonging to a user."""
@@ -28,7 +58,21 @@ async def list_files(db: AsyncSession, folder_id: int, user_id: int):
             {"folder_id": folder_id}
         )
         files = result.fetchall()
-        return [{"name": f[0]} for f in files]
+        
+        # Enhanced file list with more info
+        file_list = []
+        for f in files:
+            name = f[0]
+            mime_type = get_mime_type(name)
+            is_viewable = is_file_viewable(mime_type)
+            file_list.append({
+                "name": name,
+                "mime_type": mime_type,
+                "viewable": is_viewable,
+                "type": get_file_type_category(mime_type)
+            })
+        
+        return file_list
     except NotFoundException as e:
         raise e
     except Exception as e:
@@ -100,6 +144,41 @@ async def get_file_chunks(db: AsyncSession, filename: str, folder_id: int, user_
     
     return chunks
 
+def get_mime_type(filename: str) -> str:
+    """Get the MIME type of a file with enhanced detection."""
+    mime_type, _ = mimetypes.guess_type(filename)
+    
+    if not mime_type:
+        # Try to determine MIME type from extension
+        _, ext = os.path.splitext(filename.lower())
+        if ext in EXTENSION_MIME_MAP:
+            mime_type = EXTENSION_MIME_MAP[ext]
+        else:
+            mime_type = "application/octet-stream"
+            
+    return mime_type
+
+def is_file_viewable(mime_type: str) -> bool:
+    """Determine if a file type is viewable in browser."""
+    return any(mime_type.startswith(vtype) for vtype in VIEWABLE_MIME_TYPES)
+
+def get_file_type_category(mime_type: str) -> str:
+    """Get the general category of a file based on MIME type."""
+    if mime_type.startswith('image/'):
+        return "image"
+    elif mime_type.startswith('video/'):
+        return "video"
+    elif mime_type.startswith('audio/'):
+        return "audio"
+    elif mime_type.startswith('text/'):
+        return "text"
+    elif mime_type == 'application/pdf':
+        return "pdf"
+    elif mime_type in ['application/json', 'application/javascript', 'application/xml']:
+        return "code"
+    else:
+        return "other"
+
 async def create_file_download_stream(filename: str, chunks):
     """Create a streaming response for file download."""
     async def file_generator():
@@ -112,18 +191,22 @@ async def create_file_download_stream(filename: str, chunks):
             except Exception as e:
                 raise FileOperationException(f"Failed to fetch chunk {chunk_id} from Discord: {str(e)}")
                 
-    mime_type, _ = mimetypes.guess_type(filename)
-    if not mime_type:
-        mime_type = "application/octet-stream"
+    mime_type = get_mime_type(filename)
         
     return StreamingResponse(
         file_generator(), 
-        media_type="application/octet-stream", 
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        media_type=mime_type, 
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Type": mime_type,
+            "X-File-Name": filename,
+            "X-File-Type": mime_type,
+            "Cache-Control": "no-cache"
+        }
     )
 
 async def create_file_view_stream(filename: str, chunks):
-    """Create a streaming response for viewing a file."""
+    """Create a streaming response for viewing a file with enhanced frontend support."""
     async def file_generator():
         for chunk_id, discord_message_id in chunks:
             try:
@@ -133,28 +216,57 @@ async def create_file_view_stream(filename: str, chunks):
                 yield chunk
             except Exception as e:
                 raise FileOperationException(f"Failed to fetch chunk {chunk_id} from Discord: {str(e)}")
-                
-    mime_type, _ = mimetypes.guess_type(filename)
-    if not mime_type:
-        mime_type = "application/octet-stream"
     
-    viewable_types = [
-        'text/', 'image/', 'video/', 'audio/',
-        'application/pdf',
-        'application/json',
-        'application/javascript',
-        'application/xml'
-    ]
+    # Get MIME type and check if viewable
+    mime_type = get_mime_type(filename)
+    is_viewable = is_file_viewable(mime_type)
+    file_type = get_file_type_category(mime_type)
     
-    is_viewable = any(mime_type.startswith(vtype) for vtype in viewable_types)
-    content_disposition = f"inline; filename={filename}" if is_viewable else f"attachment; filename={filename}"
+    # If not viewable, return a structured error response or force download
+    if not is_viewable:
+        # Option 1: Return a JSON response with error info
+        if file_type == "other":
+            # Return a structured response with file metadata
+            response_headers = {
+                "Content-Type": "application/json",
+                "X-File-Name": filename,
+                "X-File-Type": mime_type,
+                "X-File-Viewable": "false",
+                "X-File-Category": file_type,
+                "Cache-Control": "no-cache"
+            }
+            
+            return JSONResponse(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                content={
+                    "status": False,
+                    "message": FILE_TYPE_NOT_SUPPORTED,
+                    "error": f"File type {mime_type} is not supported for viewing in browser",
+                    "file": {
+                        "name": filename,
+                        "type": mime_type,
+                        "category": file_type,
+                        "viewable": False
+                    },
+                    "recommended_action": "download"
+                },
+                headers=response_headers
+            )
+    
+    # For viewable files, set appropriate headers
+    content_disposition = "inline" if is_viewable else "attachment"
     
     headers = {
         "Content-Type": mime_type,
-        "Content-Disposition": content_disposition,
+        "Content-Disposition": f"{content_disposition}; filename={filename}",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
+        "Access-Control-Allow-Headers": "Content-Type",
+        "X-File-Name": filename,
+        "X-File-Type": mime_type,
+        "X-File-Viewable": str(is_viewable).lower(),
+        "X-File-Category": file_type,
+        "Cache-Control": "no-cache"
     }
     
     return StreamingResponse(
@@ -162,3 +274,32 @@ async def create_file_view_stream(filename: str, chunks):
         media_type=mime_type,
         headers=headers
     )
+
+async def get_file_metadata(db: AsyncSession, filename: str, folder_id: int, user_id: int) -> Dict[str, Any]:
+    """Get metadata about a file without retrieving its contents."""
+    # Verify the file exists and belongs to the user
+    result = await db.execute(
+        text("""
+            SELECT COUNT(*) as chunk_count 
+            FROM file_chunks 
+            WHERE file_name = :filename AND folder_id = :folder_id
+        """),
+        {"filename": filename, "folder_id": folder_id}
+    )
+    file_info = result.fetchone()
+    
+    if not file_info or file_info.chunk_count == 0:
+        raise NotFoundException(f"File {filename} not found in folder {folder_id}")
+        
+    # Get file metadata
+    mime_type = get_mime_type(filename)
+    is_viewable = is_file_viewable(mime_type)
+    file_type = get_file_type_category(mime_type)
+    
+    return {
+        "name": filename,
+        "mime_type": mime_type,
+        "viewable": is_viewable,
+        "type": file_type,
+        "chunk_count": file_info.chunk_count
+    }
