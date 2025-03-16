@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..database import get_db
-from ..models import User
-from ..schemas import UserCreate, UserResponse, Token, UserLogin
-from ..utils.auth import get_password_hash, create_access_token, authenticate_user, get_current_active_user
 from datetime import timedelta
-from sqlalchemy import text
-from ..logger import logger
-from app.utils.auth import ACCESS_TOKEN_EXPIRE_MINUTES
+
+from app.db.session import get_db
+from app.schemas import UserCreate, UserResponse, Token, UserLogin
+from app.core.security import (
+    create_access_token, 
+    get_current_active_user
+)
+from app.core.config import settings
+from app.services import (
+    create_user, 
+    authenticate_user
+)
+from app.logger import logger
 from app.exceptions import DatabaseException, ValidationException
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -17,39 +23,21 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 async def signup(user: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user with email and password."""
     try:
-        # Check if email already exists
-        result = await db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": user.email})
-        if result.fetchone():
-            raise ValidationException("Email already registered")
-            
-        # Check if username already exists
-        result = await db.execute(text("SELECT id FROM users WHERE username = :username"), {"username": user.username})
-        if result.fetchone():
-            raise ValidationException("Username already taken")
-        
-        # Create new user
-        hashed_password = get_password_hash(user.password)
-        
-        # Insert user into database
-        query = text("""
-            INSERT INTO users (email, username, hashed_password, is_active)
-            VALUES (:email, :username, :hashed_password, :is_active)
-            RETURNING id, email, username, is_active, created_at
-        """)
-        
+        # Check if email or username already exists
         result = await db.execute(
-            query, 
-            {
-                "email": user.email,
-                "username": user.username,
-                "hashed_password": hashed_password,
-                "is_active": True
-            }
+            "SELECT id FROM users WHERE email = :email OR username = :username", 
+            {"email": user.email, "username": user.username}
         )
+        existing_user = result.fetchone()
         
-        new_user = result.fetchone()
-        await db.commit()
+        if existing_user:
+            # Check which field already exists
+            if existing_user.email == user.email:
+                raise ValidationException("Email already registered")
+            else:
+                raise ValidationException("Username already taken")
         
+        new_user = await create_user(db, user)
         logger.info(f"User {user.username} registered successfully")
         
         return {
@@ -78,7 +66,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
@@ -98,7 +86,7 @@ async def login_with_credentials(user_data: UserLogin, db: AsyncSession = Depend
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
